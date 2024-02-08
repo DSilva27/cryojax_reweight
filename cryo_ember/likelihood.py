@@ -1,11 +1,3 @@
-"""
-Image formation models, equipped with log-likelihood functions.
-"""
-
-from __future__ import annotations
-
-__all__ = ["GaussianImage"]
-
 from typing import Union
 from functools import cached_property
 
@@ -13,68 +5,68 @@ import jax.numpy as jnp
 import jax
 import equinox as eqx
 
-from cryojax.simulator.likelihood import GaussianImage
+from cryojax.simulator import ImagePipeline
 
 
-def get_pointer_to_params(model):
+def get_pointer_to_params(pipeline):
     output = (
-        model.specimen.pose.offset_x,
-        model.specimen.pose.offset_y,
-        model.specimen.pose.view_phi,
-        model.specimen.pose.view_theta,
-        model.specimen.pose.view_psi,
-        model.instrument.optics.defocus_u,
-        model.instrument.optics.defocus_v,
-        model.instrument.optics.amplitude_contrast,
+        pipeline.specimen.pose.offset_x,
+        pipeline.specimen.pose.offset_y,
+        pipeline.specimen.pose.view_phi,
+        pipeline.specimen.pose.view_theta,
+        pipeline.specimen.pose.view_psi,
+        pipeline.instrument.optics.ctf.defocus_u,
+        pipeline.instrument.optics.ctf.defocus_v,
+        pipeline.instrument.optics.ctf.amplitude_contrast,
     )
     return output
 
 
-def get_pointer_to_density(model):
-    output = model.specimen.density.weights
+def get_pointer_to_density(pipeline):
+    output = pipeline.specimen.density.fourier_density_grid
     return output
 
 
-def update_model(params: jax.Array, density, model: GaussianImage) -> GaussianImage:
-    new_model = eqx.tree_at(get_pointer_to_density, model, density)
-    new_model = eqx.tree_at(get_pointer_to_params, new_model, params)
+def update_pipeline(params: jax.Array, density, pipeline: ImagePipeline) -> ImagePipeline:
+    new_pipeline = eqx.tree_at(get_pointer_to_density, pipeline, density)
+    new_pipeline = eqx.tree_at(get_pointer_to_params, new_pipeline, params)
 
-    return new_model
+    return new_pipeline
 
 
 @jax.jit
 def compute_loss_(
-    params: jax.Array, density: jax.Array, model: GaussianImage, observed: jax.Array
+    params: jax.Array, density: jax.Array, pipeline: ImagePipeline, observed: jax.Array
 ) -> jax.Array:
-    model = update_model(params, density, model)
-    return model(observed)
+    pipeline = update_pipeline(params, density, pipeline)
+    return jnp.sum((observed - pipeline.render(observed))**2)
 
 
 @jax.jit
 @jax.grad
 def compute_grad(
-    params: jax.Array, model: GaussianImage, observed: jax.Array
+    params: jax.Array, pipeline: ImagePipeline, observed: jax.Array
 ) -> jax.Array:
-    return compute_loss_(params, model, observed)
+    return compute_loss_(params, pipeline, observed)
 
 
 @jax.jit
 def compute_loss(
-    model_weights: jax.Array,
+    pipeline_weights: jax.Array,
     params: jax.Array,
     densities,
-    models: list[GaussianImage],
+    pipelines: list[ImagePipeline],
     image_stack: jax.Array,
 ) -> jax.Array:
-    comp_loss_map_models_ = jax.vmap(compute_loss_, in_axes=(None, 0, None, None))
-    comp_loss_map_images_ = jax.vmap(comp_loss_map_models_, in_axes=(0, None, None, 0))
+    comp_loss_map_pipelines_ = jax.vmap(compute_loss_, in_axes=(None, 0, None, None))
+    comp_loss_map_images_ = jax.vmap(comp_loss_map_pipelines_, in_axes=(0, None, None, 0))
 
     lklhood_matrix = comp_loss_map_images_(
-        params, densities, models, image_stack
-    )  # (N_models, N_images)
+        params, densities, pipelines, image_stack
+    )  # (N_pipelines, N_images)
 
     log_lklhood = jax.scipy.special.logsumexp(
-        a=lklhood_matrix, b=model_weights[None, :], axis=1
+        a=lklhood_matrix, b=pipeline_weights[None, :], axis=1
     )
 
     log_lklhood = jnp.sum(log_lklhood)
