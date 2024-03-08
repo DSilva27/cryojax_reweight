@@ -4,14 +4,17 @@ from functools import cached_property
 import jax.numpy as jnp
 import jax
 import equinox as eqx
+import cryojax.simulator as cs
 
 from cryojax.simulator import ImagePipeline
 
 
 def get_pointer_to_params(pipeline):
+    if not isinstance(pipeline.specimen.pose, cs.EulerAnglePose):
+        raise ValueError("Only a `EulerAnglePose` pose representation is supported.")
     output = (
-        pipeline.specimen.pose.offset_x,
-        pipeline.specimen.pose.offset_y,
+        pipeline.specimen.pose.offset_x_in_angstroms,
+        pipeline.specimen.pose.offset_y_in_angstroms,
         pipeline.specimen.pose.view_phi,
         pipeline.specimen.pose.view_theta,
         pipeline.specimen.pose.view_psi,
@@ -23,6 +26,8 @@ def get_pointer_to_params(pipeline):
 
 
 def get_pointer_to_density(pipeline):
+    if not isinstance(pipeline.specimen.pose, cs.FourierVoxelGrid):
+        raise ValueError("Only a `FourierVoxelGrid` scattering potential representation is supported.")
     output = pipeline.specimen.potential.fourier_voxel_grid
     return output
 
