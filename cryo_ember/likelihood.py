@@ -15,15 +15,15 @@ def get_pointer_to_params(pipeline):
         pipeline.specimen.pose.view_phi,
         pipeline.specimen.pose.view_theta,
         pipeline.specimen.pose.view_psi,
-        pipeline.instrument.optics.ctf.defocus_u,
-        pipeline.instrument.optics.ctf.defocus_v,
-        pipeline.instrument.optics.ctf.amplitude_contrast,
+        pipeline.instrument.optics.ctf.defocus_u_in_angstroms,
+        pipeline.instrument.optics.ctf.defocus_v_in_angstroms,
+        pipeline.instrument.optics.ctf.amplitude_contrast_ratio,
     )
     return output
 
 
 def get_pointer_to_density(pipeline):
-    output = pipeline.specimen.density.fourier_density_grid
+    output = pipeline.specimen.potential.fourier_voxel_grid
     return output
 
 
